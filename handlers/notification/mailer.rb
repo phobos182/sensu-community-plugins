@@ -16,6 +16,35 @@ require 'mail'
 require 'timeout'
 
 class Mailer < Sensu::Handler
+  def default_config
+    #_ Global Settings
+    smtp_mail_to = settings['mailer']['mail_to'] || 'localhost'
+    smtp_mail_from = settings['mailer']['mail_from'] || 'localhost@localdomain'
+    smtp_address = settings['mailer']['smtp_address'] || 'localhost'
+    smtp_port = settings['mailer']['smtp_port'] || '25'
+    smtp_domain = settings['mailer']['smtp_domain'] || 'localhost.localdomain'
+    smtp_user = settings['mailer']['smtp_user'] || nil
+    smtp_password = settings['mailer']['smtp_password'] || nil
+    smtp_auth = settings['mailer']['smtp_auth'] || nil
+    smtp_auth = settings['mailer']['smtp_starttls'] || nil
+
+    params = {
+      :mail_to   => smtp_mail_to,
+      :mail_from => smtp_mail_from,
+      :smtp_addr => smtp_address,
+      :smtp_port => smtp_port,
+      :smtp_domain => smtp_domain,
+      :smtp_user => smtp_user unless smtp_user.nil?,
+      :smtp_password => smtp_password unless smtp_password.nil?,
+      :smtp_auth => smtp_auth unless smtp_auth.nil?
+      :smtp_starttls => smtp_starttls unless smtp_starttls.nil?
+    }
+
+    # MergeGet per-check configs
+    params.merge!(@event['mailer'] || {})
+    params
+  end
+
   def short_name
     @event['client']['name'] + '/' + @event['check']['name']
   end
@@ -25,17 +54,7 @@ class Mailer < Sensu::Handler
   end
 
   def handle
-    smtp_address = settings['mailer']['smtp_address'] || 'localhost'
-    smtp_port = settings['mailer']['smtp_port'] || '25'
-    smtp_domain = settings['mailer']['smtp_domain'] || 'localhost.localdomain'
-    
-    params = {
-      :mail_to   => settings['mailer']['mail_to'],
-      :mail_from => settings['mailer']['mail_from'],
-      :smtp_addr => smtp_address,
-      :smtp_port => smtp_port,
-      :smtp_domain => smtp_domain
-    }
+    params = self.default_config
 
     body = <<-BODY.gsub(/^ {14}/, '')
             #{@event['check']['output']}
@@ -51,10 +70,12 @@ class Mailer < Sensu::Handler
 
     Mail.defaults do
       delivery_method :smtp, {
-        :address => params[:smtp_addr],
-        :port    => params[:smtp_port],
-        :domain  => params[:smtp_domain],
-        :openssl_verify_mode => 'none'
+        :address              => params[:smtp_addr],
+        :port                 => params[:smtp_port],
+        :domain               => params[:smtp_domain],
+        :user_name            => params[:smtp_user] if params[:smtp_user],
+        :password             => params[:smtp_password] if params[:smtp_password],
+        :enable_starttls_auto => params[:smtp_starttls] if params[:smtp_starttls]
       }
     end
 
